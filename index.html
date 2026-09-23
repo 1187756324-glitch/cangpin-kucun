@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#173e38" />
+    <meta name="description" content="个人烟酒茶收藏库存与存入存出流水账本" />
+    <title>藏品库存</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23173e38'/%3E%3Cpath d='M18 23h28v25H18z' fill='%23f6f3ea'/%3E%3Cpath d='M15 17h34v9H15z' fill='%23dcae54'/%3E%3Cpath d='M27 31h10v10H27z' fill='%23173e38'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">我的收藏</p>
+          <h1 id="pageTitle">库存</h1>
+        </div>
+        <button class="icon-button" id="backupButton" aria-label="备份与恢复" title="备份与恢复">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg>
+        </button>
+      </header>
+
+      <section class="view active" id="inventoryView" aria-labelledby="pageTitle">
+        <div class="summary-card">
+          <div>
+            <span>当前库存</span>
+            <strong id="totalStock">0</strong>
+            <small>件藏品</small>
+          </div>
+          <button class="primary-button compact" data-action="open-add-product">+ 添加商品</button>
+        </div>
+
+        <div class="filter-row" role="group" aria-label="库存分类">
+          <button class="filter-chip active" data-category="全部">全部</button>
+          <button class="filter-chip" data-category="烟">烟</button>
+          <button class="filter-chip" data-category="酒">酒</button>
+          <button class="filter-chip" data-category="茶">茶</button>
+        </div>
+
+        <div class="product-grid" id="productGrid"></div>
+        <div class="empty-state" id="inventoryEmpty" hidden>
+          <div class="empty-icon">藏</div>
+          <h2>还没有商品</h2>
+          <p>添加第一件烟、酒或茶，库存会从这里开始记录。</p>
+          <button class="primary-button" data-action="open-add-product">添加商品</button>
+        </div>
+      </section>
+
+      <section class="view" id="recordView" aria-labelledby="pageTitle">
+        <div class="form-card record-card">
+          <div class="segmented" role="group" aria-label="流水类型">
+            <button class="active" data-movement="in">存入</button>
+            <button data-movement="out">存出</button>
+          </div>
+          <form id="recordForm">
+            <label>
+              <span>商品</span>
+              <select id="recordProduct" required>
+                <option value="">请选择商品</option>
+              </select>
+            </label>
+            <label>
+              <span>数量</span>
+              <div class="quantity-input">
+                <button type="button" data-step="-1" aria-label="减少数量">−</button>
+                <input id="recordQuantity" type="number" min="1" step="1" inputmode="numeric" value="1" required />
+                <button type="button" data-step="1" aria-label="增加数量">＋</button>
+              </div>
+            </label>
+            <p class="stock-hint" id="stockHint">选择商品后显示当前库存</p>
+            <button class="primary-button full" type="submit" id="recordSubmit">确认存入</button>
+          </form>
+          <button class="text-button" data-action="open-add-product">没有这个商品？先添加</button>
+        </div>
+      </section>
+
+      <section class="view" id="historyView" aria-labelledby="pageTitle">
+        <div class="history-list" id="historyList"></div>
+        <div class="empty-state" id="historyEmpty" hidden>
+          <div class="empty-icon">流</div>
+          <h2>还没有流水</h2>
+          <p>每次存入或存出都会自动记录在这里。</p>
+          <button class="primary-button" data-nav="record">记一笔</button>
+        </div>
+      </section>
+
+      <nav class="bottom-nav" aria-label="主要功能">
+        <button class="active" data-nav="inventory">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v12H4zM3 4h18v4H3zM9 12h6"/></svg>
+          <span>库存</span>
+        </button>
+        <button class="record-nav" data-nav="record">
+          <span class="record-icon">＋</span>
+          <span>记一笔</span>
+        </button>
+        <button data-nav="history">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
+          <span>流水</span>
+        </button>
+      </nav>
+    </main>
+
+    <dialog id="productDialog">
+      <form method="dialog" class="dialog-card" id="productForm">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">新建藏品</p>
+            <h2>添加商品</h2>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="关闭">×</button>
+        </div>
+
+        <label class="image-picker" id="imagePicker">
+          <input id="productImage" type="file" accept="image/*" capture="environment" />
+          <img id="imagePreview" alt="商品图片预览" hidden />
+          <span id="imagePlaceholder">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+            拍照或选择图片
+          </span>
+        </label>
+
+        <label>
+          <span>商品名称</span>
+          <input id="productName" type="text" maxlength="30" placeholder="例如：普洱熟茶" required />
+        </label>
+
+        <fieldset>
+          <legend>分类</legend>
+          <div class="category-options">
+            <label><input type="radio" name="category" value="烟" required /><span>烟</span></label>
+            <label><input type="radio" name="category" value="酒" checked /><span>酒</span></label>
+            <label><input type="radio" name="category" value="茶" /><span>茶</span></label>
+          </div>
+        </fieldset>
+
+        <div class="field-row">
+          <label>
+            <span>初始数量</span>
+            <input id="initialQuantity" type="number" min="0" step="1" inputmode="numeric" value="0" required />
+          </label>
+          <label>
+            <span>单位</span>
+            <select id="productUnit">
+              <option>件</option>
+              <option>包</option>
+              <option>条</option>
+              <option selected>瓶</option>
+              <option>盒</option>
+              <option>罐</option>
+              <option>饼</option>
+            </select>
+          </label>
+        </div>
+
+        <button class="primary-button full" type="submit" value="default">保存商品</button>
+      </form>
+    </dialog>
+
+    <dialog id="backupDialog">
+      <div class="dialog-card small-dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">本机数据</p>
+            <h2>备份与恢复</h2>
+          </div>
+          <button class="icon-button" data-close-dialog aria-label="关闭">×</button>
+        </div>
+        <p class="dialog-copy">数据只保存在当前浏览器。换手机或清理浏览器前，请先导出备份。</p>
+        <button class="secondary-button full" id="exportButton">导出备份文件</button>
+        <label class="secondary-button full file-button">
+          导入备份文件
+          <input id="importInput" type="file" accept="application/json,.json" />
+        </label>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
