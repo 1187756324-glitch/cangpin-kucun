@@ -48,6 +48,23 @@
         </div>
       </section>
 
+      <section class="view" id="manageView" aria-labelledby="pageTitle">
+        <div class="manage-toolbar">
+          <div>
+            <h2>全部商品</h2>
+            <p>新增、修改或删除收藏商品</p>
+          </div>
+          <button class="primary-button compact" data-action="open-add-product">+ 新增商品</button>
+        </div>
+        <div class="manage-list" id="manageProductList"></div>
+        <div class="empty-state manage-empty" id="manageEmpty" hidden>
+          <div class="empty-icon">商</div>
+          <h2>还没有商品</h2>
+          <p>新增商品后，可以在这里统一管理。</p>
+          <button class="primary-button" data-action="open-add-product">新增商品</button>
+        </div>
+      </section>
+
       <section class="view" id="recordView" aria-labelledby="pageTitle">
         <div class="form-card record-card">
           <div class="segmented" role="group" aria-label="流水类型">
@@ -91,6 +108,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v12H4zM3 4h18v4H3zM9 12h6"/></svg>
           <span>库存</span>
         </button>
+        <button data-nav="manage">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v12H4zM3 4h18v4H3zM8 13h8M8 17h5"/></svg>
+          <span>商品</span>
+        </button>
         <button class="record-nav" data-nav="record">
           <span class="record-icon">＋</span>
           <span>记一笔</span>
@@ -106,8 +127,8 @@
       <form method="dialog" class="dialog-card" id="productForm">
         <div class="dialog-header">
           <div>
-            <p class="eyebrow">新建藏品</p>
-            <h2>添加商品</h2>
+            <p class="eyebrow" id="productDialogEyebrow">新建藏品</p>
+            <h2 id="productDialogTitle">添加商品</h2>
           </div>
           <button class="icon-button" type="button" data-close-dialog aria-label="关闭">×</button>
         </div>
@@ -117,7 +138,7 @@
           <img id="imagePreview" alt="商品图片预览" hidden />
           <span id="imagePlaceholder">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
-            拍照或选择图片
+            <strong id="imagePromptText">拍照或选择图片</strong>
           </span>
         </label>
 
@@ -136,7 +157,7 @@
         </fieldset>
 
         <div class="field-row">
-          <label>
+          <label id="initialQuantityField">
             <span>初始数量</span>
             <input id="initialQuantity" type="number" min="0" step="1" inputmode="numeric" value="0" required />
           </label>
@@ -148,14 +169,32 @@
               <option>条</option>
               <option selected>瓶</option>
               <option>盒</option>
+              <option>箱</option>
               <option>罐</option>
               <option>饼</option>
             </select>
           </label>
         </div>
 
-        <button class="primary-button full" type="submit" value="default">保存商品</button>
+        <button class="primary-button full" id="productSubmitButton" type="submit" value="default">保存商品</button>
       </form>
+    </dialog>
+
+    <dialog id="deleteDialog">
+      <div class="dialog-card small-dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">删除确认</p>
+            <h2>删除商品</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog aria-label="关闭">×</button>
+        </div>
+        <p class="dialog-copy">确定删除“<strong id="deleteProductName"></strong>”吗？该商品及相关流水将一起删除，无法恢复。</p>
+        <div class="dialog-actions">
+          <button class="secondary-button" type="button" data-close-dialog>取消</button>
+          <button class="danger-button" type="button" id="confirmDeleteButton">删除商品</button>
+        </div>
+      </div>
     </dialog>
 
     <dialog id="backupDialog">

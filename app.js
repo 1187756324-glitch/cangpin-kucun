@@ -9,6 +9,9 @@ const state = {
   category: "全部",
   movementType: "in",
   pendingImage: null,
+  editingProductId: null,
+  deletingProductId: null,
+  dialogImageUrl: null,
   objectUrls: [],
 };
 
@@ -130,7 +133,10 @@ function renderInventory() {
           ${src ? `<img src="${src}" alt="${escapeHtml(product.name)}" />` : `<span class="placeholder">${escapeHtml(product.category)}</span>`}
         </div>
         <div class="product-meta">
-          <span class="product-category">${escapeHtml(product.category)}</span>
+          <div class="product-meta-top">
+            <span class="product-category">${escapeHtml(product.category)}</span>
+            <button type="button" class="manage-button" data-edit-product="${product.id}" aria-label="管理${escapeHtml(product.name)}">管理</button>
+          </div>
           <div class="product-name">${escapeHtml(product.name)}</div>
           <div class="product-count"><span>库存</span><span><strong>${stock}</strong> ${escapeHtml(product.unit)}</span></div>
         </div>
@@ -146,6 +152,30 @@ function renderProductOptions() {
   ).join("")}`;
   if (state.products.some((product) => product.id === current)) select.value = current;
   updateStockHint();
+}
+
+function renderManageProducts() {
+  const list = $("#manageProductList");
+  $("#manageEmpty").hidden = state.products.length !== 0;
+  list.hidden = state.products.length === 0;
+  list.innerHTML = state.products.map((product) => {
+    const src = imageUrl(product.image);
+    const stock = stockFor(product.id);
+    return `
+      <article class="manage-item">
+        <div class="manage-thumb">
+          ${src ? `<img src="${src}" alt="${escapeHtml(product.name)}" />` : `<span>${escapeHtml(product.category)}</span>`}
+        </div>
+        <div class="manage-info">
+          <strong>${escapeHtml(product.name)}</strong>
+          <small>${escapeHtml(product.category)} · 库存 ${stock} ${escapeHtml(product.unit)}</small>
+        </div>
+        <div class="manage-actions">
+          <button type="button" class="edit-button" data-edit-product="${product.id}">编辑</button>
+          <button type="button" class="delete-button" data-delete-product="${product.id}">删除</button>
+        </div>
+      </article>`;
+  }).join("");
 }
 
 function renderHistory() {
@@ -172,6 +202,7 @@ function renderHistory() {
 
 function renderAll() {
   renderInventory();
+  renderManageProducts();
   renderProductOptions();
   renderHistory();
 }
@@ -185,7 +216,7 @@ function showToast(message) {
 }
 
 function navigate(target) {
-  const titles = { inventory: "库存", record: "记一笔", history: "流水" };
+  const titles = { inventory: "库存", manage: "商品管理", record: "记一笔", history: "流水" };
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === `${target}View`));
   $$("[data-nav]").forEach((button) => button.classList.toggle("active", button.dataset.nav === target));
   $("#pageTitle").textContent = titles[target];
@@ -249,6 +280,45 @@ async function addProduct({ name, category, unit, initialQuantity = 0, image = n
   return product;
 }
 
+async function updateProduct({ id, name, category, unit, image }) {
+  const index = state.products.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("没有找到这个商品");
+  const trimmedName = name.trim();
+  if (!trimmedName) throw new Error("请输入商品名称");
+  const product = {
+    ...state.products[index],
+    name: trimmedName,
+    category,
+    unit,
+    image,
+    updatedAt: new Date().toISOString(),
+  };
+  await put(PRODUCTS, product);
+  state.products[index] = product;
+  renderAll();
+  return product;
+}
+
+async function deleteProduct(productId) {
+  const db = await openDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction([PRODUCTS, MOVEMENTS], "readwrite");
+    transaction.objectStore(PRODUCTS).delete(productId);
+    const cursorRequest = transaction.objectStore(MOVEMENTS).index("productId").openCursor(IDBKeyRange.only(productId));
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) return;
+      cursor.delete();
+      cursor.continue();
+    };
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  state.products = state.products.filter((product) => product.id !== productId);
+  state.movements = state.movements.filter((movement) => movement.productId !== productId);
+  renderAll();
+}
+
 async function recordMovement({ productId, type, quantity, note }) {
   const product = state.products.find((item) => item.id === productId);
   const amount = Number(quantity);
@@ -274,10 +344,49 @@ function resetProductForm() {
   $("#productForm").reset();
   $("#initialQuantity").value = "0";
   $("#productUnit").value = "瓶";
+  $("#productImage").value = "";
   state.pendingImage = null;
+  state.editingProductId = null;
+  if (state.dialogImageUrl) URL.revokeObjectURL(state.dialogImageUrl);
+  state.dialogImageUrl = null;
   $("#imagePreview").hidden = true;
   $("#imagePreview").removeAttribute("src");
   $("#imagePlaceholder").hidden = false;
+  $("#productDialogEyebrow").textContent = "新建藏品";
+  $("#productDialogTitle").textContent = "添加商品";
+  $("#imagePromptText").textContent = "拍照或选择图片";
+  $("#initialQuantityField").hidden = false;
+  $("#initialQuantityField").closest(".field-row").classList.remove("edit-mode");
+  $("#productSubmitButton").textContent = "保存商品";
+}
+
+function showProductImage(blob) {
+  if (state.dialogImageUrl) URL.revokeObjectURL(state.dialogImageUrl);
+  state.dialogImageUrl = blob ? URL.createObjectURL(blob) : null;
+  $("#imagePreview").src = state.dialogImageUrl || "";
+  $("#imagePreview").hidden = !blob;
+  $("#imagePlaceholder").hidden = Boolean(blob);
+}
+
+function openProductDialog(productId = null) {
+  resetProductForm();
+  if (productId) {
+    const product = state.products.find((item) => item.id === productId);
+    if (!product) return showToast("没有找到这个商品");
+    state.editingProductId = product.id;
+    $("#productDialogEyebrow").textContent = "商品管理";
+    $("#productDialogTitle").textContent = "编辑商品";
+    $("#productName").value = product.name;
+    const categoryInput = $(`input[name="category"][value="${product.category}"]`);
+    if (categoryInput) categoryInput.checked = true;
+    $("#productUnit").value = product.unit;
+    $("#initialQuantityField").hidden = true;
+    $("#initialQuantityField").closest(".field-row").classList.add("edit-mode");
+    $("#productSubmitButton").textContent = "保存修改";
+    $("#imagePromptText").textContent = "补拍或选择图片";
+    showProductImage(product.image);
+  }
+  $("#productDialog").showModal();
 }
 
 function blobToDataUrl(blob) {
@@ -348,7 +457,7 @@ function registerWebMcpTools() {
         properties: {
           name: { type: "string", minLength: 1 },
           category: { type: "string", enum: ["烟", "酒", "茶"] },
-          unit: { type: "string", enum: ["件", "包", "条", "瓶", "盒", "罐", "饼"] },
+          unit: { type: "string", enum: ["件", "包", "条", "瓶", "盒", "箱", "罐", "饼"] },
           initialQuantity: { type: "integer", minimum: 0 }
         },
         required: ["name", "category", "unit", "initialQuantity"],
@@ -406,15 +515,27 @@ document.addEventListener("click", (event) => {
   if (nav) navigate(nav.dataset.nav);
 
   if (event.target.closest('[data-action="open-add-product"]')) {
-    resetProductForm();
-    $("#productDialog").showModal();
+    openProductDialog();
+  }
+
+  const editProduct = event.target.closest("[data-edit-product]");
+  if (editProduct) openProductDialog(editProduct.dataset.editProduct);
+
+  const deleteButton = event.target.closest("[data-delete-product]");
+  if (deleteButton) {
+    const product = state.products.find((item) => item.id === deleteButton.dataset.deleteProduct);
+    if (product) {
+      state.deletingProductId = product.id;
+      $("#deleteProductName").textContent = product.name;
+      $("#deleteDialog").showModal();
+    }
   }
 
   const filter = event.target.closest("[data-category]");
   if (filter) {
     state.category = filter.dataset.category;
     $$("[data-category]").forEach((button) => button.classList.toggle("active", button === filter));
-    renderInventory();
+    renderAll();
   }
 
   const movement = event.target.closest("[data-movement]");
@@ -433,14 +554,24 @@ $("#backupButton").addEventListener("click", () => $("#backupDialog").showModal(
 $("#recordProduct").addEventListener("change", updateStockHint);
 $("#exportButton").addEventListener("click", exportBackup);
 
+$("#confirmDeleteButton").addEventListener("click", async () => {
+  const productId = state.deletingProductId;
+  if (!productId) return;
+  try {
+    await deleteProduct(productId);
+    $("#deleteDialog").close();
+    showToast("商品及相关流水已删除");
+  } catch (error) {
+    showToast(error.message || "删除失败");
+  }
+});
+
 $("#productImage").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
     state.pendingImage = await compressImage(file);
-    $("#imagePreview").src = URL.createObjectURL(state.pendingImage);
-    $("#imagePreview").hidden = false;
-    $("#imagePlaceholder").hidden = true;
+    showProductImage(state.pendingImage);
   } catch {
     showToast("图片处理失败，请换一张图片");
   }
@@ -449,16 +580,27 @@ $("#productImage").addEventListener("change", async (event) => {
 $("#productForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    await addProduct({
-      name: $("#productName").value,
-      category: new FormData(event.currentTarget).get("category"),
-      unit: $("#productUnit").value,
-      initialQuantity: Number($("#initialQuantity").value),
-      image: state.pendingImage,
-    });
+    const editingProduct = state.products.find((item) => item.id === state.editingProductId);
+    if (editingProduct) {
+      await updateProduct({
+        id: editingProduct.id,
+        name: $("#productName").value,
+        category: new FormData(event.currentTarget).get("category"),
+        unit: $("#productUnit").value,
+        image: state.pendingImage || editingProduct.image || null,
+      });
+    } else {
+      await addProduct({
+        name: $("#productName").value,
+        category: new FormData(event.currentTarget).get("category"),
+        unit: $("#productUnit").value,
+        initialQuantity: Number($("#initialQuantity").value),
+        image: state.pendingImage,
+      });
+    }
     $("#productDialog").close();
     resetProductForm();
-    showToast("商品已添加");
+    showToast(editingProduct ? "商品已更新" : "商品已添加");
   } catch (error) {
     showToast(error.message || "保存失败");
   }
@@ -490,6 +632,12 @@ $("#importInput").addEventListener("change", async (event) => {
   } finally {
     event.target.value = "";
   }
+});
+
+$("#productDialog").addEventListener("close", resetProductForm);
+$("#deleteDialog").addEventListener("close", () => {
+  state.deletingProductId = null;
+  $("#deleteProductName").textContent = "";
 });
 
 initialize();
